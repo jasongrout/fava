@@ -5,11 +5,13 @@
 # Usage: tools/integration/rebuild.sh [--push]
 #
 # Environment overrides: REMOTE (default: origin), TARGET (integration),
-# TOOLS_BRANCH (integration-tools), UPSTREAM_URL, UPSTREAM_BRANCH (main).
+# ARCHIVE (integration-archive), TOOLS_BRANCH (integration-tools),
+# UPSTREAM_URL, UPSTREAM_BRANCH (main).
 set -euo pipefail
 
 REMOTE="${REMOTE:-origin}"
 TARGET="${TARGET:-integration}"
+ARCHIVE="${ARCHIVE:-integration-archive}"
 TOOLS_BRANCH="${TOOLS_BRANCH:-integration-tools}"
 UPSTREAM_URL="${UPSTREAM_URL:-https://github.com/beancount/fava.git}"
 UPSTREAM_BRANCH="${UPSTREAM_BRANCH:-main}"
@@ -54,6 +56,7 @@ for b in "${branches[@]}"; do
 done
 
 old=$(git rev-parse --verify --quiet "refs/remotes/$REMOTE/$TARGET" || true)
+archive=$(git rev-parse --verify --quiet "refs/remotes/$REMOTE/$ARCHIVE" || true)
 
 worktree=$(mktemp -d "${TMPDIR:-/tmp}/fava-integration.XXXXXX")
 keep_worktree=false
@@ -121,6 +124,7 @@ done
 new=$(wt_git rev-parse HEAD)
 
 # Avoid rewriting the branch if nothing changed.
+publish="$new"
 if [ -n "$old" ] && git diff --quiet "$old" "$new"; then
   up_to_date=true
   for ref in "${contained[@]}"; do
@@ -131,14 +135,42 @@ if [ -n "$old" ] && git diff --quiet "$old" "$new"; then
   done
   if [ "$up_to_date" = true ]; then
     echo "$REMOTE/$TARGET is up to date ($old)"
-    exit 0
+    publish="$old"
   fi
 fi
 
-if [ "$push" = true ]; then
-  git push --force-with-lease="$TARGET:$old" "$REMOTE" "$new:refs/heads/$TARGET"
-  echo "Pushed $new to $REMOTE/$TARGET"
-else
-  echo "Rebuilt $TARGET as $new (not pushed). To publish it:"
-  echo "  $0 --push"
+# Every published commit is kept reachable from the append-only archive
+# branch, so that it can still be fetched by its hash (e.g., when pinned in a
+# pixi.toml or requirements file) after the integration branch was rewritten.
+# Each archive commit has the previous archive tip and the published commit
+# as parents and the published commit's tree.
+refspecs=()
+if [ "$publish" != "$old" ]; then
+  refspecs+=("$publish:refs/heads/$TARGET")
 fi
+if [ -z "$archive" ] || ! git merge-base --is-ancestor "$publish" "$archive"; then
+  commit_args=("$publish^{tree}")
+  if [ -n "$archive" ]; then
+    commit_args+=(-p "$archive")
+  fi
+  commit_args+=(-p "$publish" -m "Archive $TARGET $publish")
+  archive_new=$(git commit-tree "${commit_args[@]}")
+  refspecs+=("$archive_new:refs/heads/$ARCHIVE")
+fi
+
+if [ "${#refspecs[@]}" -eq 0 ]; then
+  echo "$publish is already archived in $REMOTE/$ARCHIVE"
+elif [ "$push" = true ]; then
+  # Atomic, so that the branch is never published without being archived. The
+  # archive is only ever fast-forwarded; the lease protects the target.
+  git push --atomic --force-with-lease="$TARGET:$old" "$REMOTE" "${refspecs[@]}"
+  echo "Pushed ${refspecs[*]#*:refs/heads/} to $REMOTE"
+else
+  echo "Not pushed. To publish $TARGET as $publish and archive it:"
+  echo "  $0 --push"
+  exit 0
+fi
+
+echo
+echo "To pin this build, e.g., in the [pypi-dependencies] of a pixi.toml:"
+echo "  fava = { git = \"$(git remote get-url "$REMOTE")\", rev = \"$publish\" }"

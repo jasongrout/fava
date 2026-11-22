@@ -30,6 +30,25 @@ differs from the current `integration` branch.
 - If `branches.txt` cannot be read or lists a branch that does not exist, the
   script stops without building anything.
 
+## Pinning a build
+
+Every published build is also kept in the append-only `integration-archive`
+branch: on each push, the script adds a commit to it whose parents are the
+previous archive tip and the new `integration` commit. So a build stays
+reachable, and can be fetched by its hash, after `integration` has been rebuilt.
+The archive is only ever fast-forwarded and pushed atomically with
+`integration`.
+
+After a push, the script prints the line to pin the build, e.g., in the
+`[pypi-dependencies]` of a `pixi.toml`:
+
+```toml
+fava = { git = "https://github.com/jasongrout/fava", rev = "<commit hash>" }
+```
+
+Building Fava from git compiles the frontend with `npm`, so add `nodejs` to the
+`[dependencies]` of the `pixi.toml` as well.
+
 ## Changing the list
 
 Edit `branches.txt` on the `integration-tools` branch, push it, and rerun the
