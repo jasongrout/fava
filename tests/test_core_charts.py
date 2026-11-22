@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
+from textwrap import dedent
 from typing import TYPE_CHECKING
 
+from fava.core import FavaLedger
+from fava.core.charts import BalanceCheckPoint
 from fava.core.conversion import AT_COST
 from fava.util.date import Day
 from fava.util.date import Month
 
 if TYPE_CHECKING:  # pragma: no cover
-    from fava.core import FavaLedger
+    from pathlib import Path
 
     from .conftest import GetFavaLedger
     from .conftest import SnapshotFunc
@@ -121,3 +125,38 @@ def test_interval_totals_sibling_with_shared_prefix(
         filtered, Month, "Expenses:Others", "EUR"
     ):
         assert set(interval.account_balances) == {"Expenses:Others"}
+
+
+def test_balance_checks(tmp_path: Path) -> None:
+    path = tmp_path / "balances.beancount"
+    path.write_text(
+        dedent("""
+        2020-01-01 open Assets:Cash
+        2020-01-01 open Assets:Cash:Wallet
+        2020-01-01 open Assets:CashOther
+        2020-01-01 open Equity:Opening
+
+        2020-01-02 * "Opening"
+          Assets:Cash          10 USD
+          Assets:Cash:Wallet    5 USD
+          Assets:CashOther      1 USD
+          Equity:Opening
+
+        2020-01-03 balance Assets:Cash         15 USD
+        2020-01-03 balance Assets:Cash:Wallet   5 USD
+        2020-01-03 balance Assets:CashOther     1 USD
+        2020-01-04 balance Assets:Cash         20 USD
+        """),
+        encoding="utf-8",
+    )
+    ledger = FavaLedger(str(path))
+    filtered = ledger.get_filtered()
+
+    assert ledger.charts.balance_checks(filtered, "Assets:Cash") == [
+        BalanceCheckPoint(date(2020, 1, 3), "USD", Decimal(15), passed=True),
+        BalanceCheckPoint(date(2020, 1, 4), "USD", Decimal(20), passed=False),
+    ]
+    assert ledger.charts.balance_checks(filtered, "Assets:Cash:Wallet") == [
+        BalanceCheckPoint(date(2020, 1, 3), "USD", Decimal(5), passed=True),
+    ]
+    assert ledger.charts.balance_checks(filtered, "Assets") == []
