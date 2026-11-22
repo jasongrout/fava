@@ -24,10 +24,13 @@
     height: number;
     /** Optional content for a following tooltip to show. */
     find?: TooltipFindNode;
+    /** Optional callback for a click (without drag) at the given date. */
+    on_click_date?: (date: Date) => void;
     children: Snippet;
   }
 
-  let { invert, height, children, find, transform }: Props = $props();
+  let { invert, height, children, find, on_click_date, transform }: Props =
+    $props();
 
   const tooltip = get_chart_tooltip();
 
@@ -93,6 +96,9 @@
       const end = $date_format(end_date);
       const time_filter = start === end ? start : `${start} - ${end}`;
       router.set_search_param("time", time_filter);
+    } else if (on_click_date != null) {
+      const [x_end] = pointer(event);
+      on_click_date(invert(x_end));
     }
     active_pointer_id = undefined;
   }

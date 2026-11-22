@@ -14,7 +14,11 @@
   import Axis from "./Axis.svelte";
   import Brush from "./Brush.svelte";
   import { currencies_scale, include_zero, pad_extent } from "./helpers.ts";
-  import type { LineChart, LineChartDatum } from "./line.ts";
+  import type {
+    BalanceCheckMarker,
+    LineChart,
+    LineChartDatum,
+  } from "./line.ts";
   import type { TooltipFindNode } from "./tooltip.ts";
 
   interface Props {
@@ -103,9 +107,28 @@
   let desaturate_future_filter = $derived(
     x_extent[1] > today ? `url(#${desaturate_filter_id})` : undefined,
   );
+
+  let visible_balance_checks = $derived(
+    chart.balance_checks.filter(
+      (bc: BalanceCheckMarker) =>
+        !$chart_toggled_currencies_set.has(bc.currency),
+    ),
+  );
+
+  let svg: SVGSVGElement | undefined = $state();
+
+  /** Dispatch a bubbling event with the clicked date. */
+  function on_click_date(date: Date) {
+    svg?.dispatchEvent(
+      new CustomEvent("chart-select-date", {
+        detail: { date },
+        bubbles: true,
+      }),
+    );
+  }
 </script>
 
-<svg viewBox={`0 0 ${width.toString()} ${height.toString()}`}>
+<svg bind:this={svg} viewBox={`0 0 ${width.toString()} ${height.toString()}`}>
   <defs>
     <filter id={desaturate_filter_id}>
       <feColorMatrix type="saturate" values="0.5" x={x(today)} />
@@ -116,6 +139,7 @@
     invert={x.invert.bind(x)}
     height={inner_height}
     find={tooltip_find}
+    {on_click_date}
     transform={`translate(${margin.left.toString()},${margin.top.toString()})`}
   >
     <Axis x axis={x_axis} {inner_height} />
@@ -139,10 +163,22 @@
         {/each}
       </g>
     {/if}
+    {#each visible_balance_checks as bc (bc)}
+      <circle
+        class={["balance-check", bc.passed ? "passed" : "failed"]}
+        r="4"
+        cx={x(bc.date)}
+        cy={y(bc.number)}
+      />
+    {/each}
   </Brush>
 </svg>
 
 <style>
+  svg {
+    cursor: pointer;
+  }
+
   .lines path {
     fill: none;
     stroke-width: 2px;
@@ -150,5 +186,18 @@
 
   .area path {
     opacity: 0.3;
+  }
+
+  .balance-check {
+    fill: none;
+    stroke-width: 2px;
+  }
+
+  .balance-check.passed {
+    stroke: var(--color-balance-passed, green);
+  }
+
+  .balance-check.failed {
+    stroke: var(--color-balance-failed, red);
   }
 </style>

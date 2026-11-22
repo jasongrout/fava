@@ -19,6 +19,34 @@
     interval_label($current_interval).toLowerCase(),
   );
 
+  /** Attach listener for chart date clicks to scroll the journal. */
+  function chart_click_listener(node: HTMLElement) {
+    function handler(event: Event) {
+      const { date } = (event as CustomEvent<{ date: Date }>).detail;
+      const target = new Date(date.toISOString().slice(0, 10)).getTime();
+      const date_cells = node.querySelectorAll<HTMLElement>(
+        ".journal > li > p > .datecell > a",
+      );
+      let closest: Element | null = null;
+      let closest_diff = Infinity;
+      for (const cell of date_cells) {
+        const date_str = cell.textContent.trim();
+        if (date_str) {
+          const diff = Math.abs(new Date(date_str).getTime() - target);
+          if (diff < closest_diff) {
+            closest_diff = diff;
+            closest = cell.closest("li");
+          }
+        }
+      }
+      closest?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    node.addEventListener("chart-select-date", handler);
+    return () => {
+      node.removeEventListener("chart-select-date", handler);
+    };
+  }
+
   let all_charts = $derived.by(() => {
     if (report.type === "journal") {
       return report.charts;
@@ -41,54 +69,69 @@
   });
 </script>
 
-<ChartSwitcher charts={all_charts} />
-
-<div class="droptarget" data-account-name={account}>
-  <div class="headerline">
-    <h3>
-      {#if report_type !== "journal"}
-        <a
-          href={$url_for_account(account)}
-          title={_("Journal of all entries for this Account and Sub-Accounts")}
-        >
-          {_("Account Journal")}
-        </a>
-      {:else}
-        {_("Account Journal")}
-      {/if}
-    </h3>
-    <h3>
-      {#if report_type !== "changes"}
-        <a href={$url_for_account(account, { r: "changes" })}>
-          {_("Changes")} ({interval_label_lower})
-        </a>
-      {:else}
-        {_("Changes")} ({interval_label_lower})
-      {/if}
-    </h3>
-    <h3>
-      {#if report_type !== "balances"}
-        <a href={$url_for_account(account, { r: "balances" })}>
-          {_("Balances")} ({interval_label_lower})
-        </a>
-      {:else}
-        {_("Balances")} ({interval_label_lower})
-      {/if}
-    </h3>
+<div {@attach chart_click_listener}>
+  <div class="sticky-chart">
+    <ChartSwitcher charts={all_charts} />
   </div>
-  {#if report.type === "journal"}
-    <JournalTable
-      journal={report.journal}
-      initial_sort={["date", "desc"]}
-      show_change_and_balance={true}
-    />
-  {:else if is_non_empty(report.interval_balances)}
-    <IntervalTreeTable
-      trees={report.interval_balances}
-      dates={report.dates}
-      budgets={report.budgets}
-      interval={report.interval}
-      {accumulate}
-    />
-  {/if}
+
+  <div class="droptarget" data-account-name={account}>
+    <div class="headerline">
+      <h3>
+        {#if report_type !== "journal"}
+          <a
+            href={$url_for_account(account)}
+            title={_(
+              "Journal of all entries for this Account and Sub-Accounts",
+            )}
+          >
+            {_("Account Journal")}
+          </a>
+        {:else}
+          {_("Account Journal")}
+        {/if}
+      </h3>
+      <h3>
+        {#if report_type !== "changes"}
+          <a href={$url_for_account(account, { r: "changes" })}>
+            {_("Changes")} ({interval_label_lower})
+          </a>
+        {:else}
+          {_("Changes")} ({interval_label_lower})
+        {/if}
+      </h3>
+      <h3>
+        {#if report_type !== "balances"}
+          <a href={$url_for_account(account, { r: "balances" })}>
+            {_("Balances")} ({interval_label_lower})
+          </a>
+        {:else}
+          {_("Balances")} ({interval_label_lower})
+        {/if}
+      </h3>
+    </div>
+    {#if report.type === "journal"}
+      <JournalTable
+        journal={report.journal}
+        initial_sort={["date", "desc"]}
+        show_change_and_balance={true}
+      />
+    {:else if is_non_empty(report.interval_balances)}
+      <IntervalTreeTable
+        trees={report.interval_balances}
+        dates={report.dates}
+        budgets={report.budgets}
+        interval={report.interval}
+        {accumulate}
+      />
+    {/if}
+  </div>
 </div>
+
+<style>
+  .sticky-chart {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--background);
+  }
+</style>

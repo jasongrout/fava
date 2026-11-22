@@ -21,6 +21,7 @@
   },
   "charts": [
     {
+      "balance_checks": [],
       "data": [{ "balance": { "USD": "101" }, "date": "2022-01-01" }],
       "key": "account_balance",
       "label": "Account Balance",
