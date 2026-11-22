@@ -172,5 +172,7 @@ else
 fi
 
 echo
-echo "To pin this build, e.g., in the [pypi-dependencies] of a pixi.toml:"
+echo "To pin this build, e.g., in the [pypi-dependencies] of a pixi.toml, from"
+echo "$REMOTE or from this clone (after fetching $REMOTE):"
 echo "  fava = { git = \"$(git remote get-url "$REMOTE")\", rev = \"$publish\" }"
+echo "  fava = { git = \"file://$(git rev-parse --show-toplevel)\", rev = \"$publish\" }"

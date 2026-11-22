@@ -39,15 +39,30 @@ reachable, and can be fetched by its hash, after `integration` has been rebuilt.
 The archive is only ever fast-forwarded and pushed atomically with
 `integration`.
 
-After a push, the script prints the line to pin the build, e.g., in the
-`[pypi-dependencies]` of a `pixi.toml`:
+After a push, the script prints the lines to pin the build, e.g., in the
+`[pypi-dependencies]` of a `pixi.toml`, either from GitHub or from a local clone
+of the fork:
 
 ```toml
 fava = { git = "https://github.com/jasongrout/fava", rev = "<commit hash>" }
+fava = { git = "file:///path/to/fava", rev = "<commit hash>" }
 ```
 
+For a local clone, the path must be absolute, and the clone must contain the
+commit, so run `git fetch origin` in it first. The commit only needs to be
+reachable from a remote-tracking branch such as `origin/integration-archive`; no
+local branch is needed.
+
 Building Fava from git compiles the frontend with `npm`, so add `nodejs` to the
-`[dependencies]` of the `pixi.toml` as well.
+`[dependencies]` of the `pixi.toml` as well. Fava's version is derived from git
+tags, which the fork does not have; to get a proper version (e.g.,
+`1.32.dev18+g<hash>` instead of `0.1.dev3600+g<hash>`) when building from a
+local clone, fetch upstream's version tags into it once (and after upstream
+releases):
+
+```bash
+git fetch --no-tags https://github.com/beancount/fava.git 'refs/tags/v*:refs/tags/v*'
+```
 
 ## Changing the list
 
