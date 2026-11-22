@@ -2,11 +2,14 @@ import { sort } from "d3-array";
 
 import type { FormatterContext } from "../format.ts";
 import { day } from "../format.ts";
+import { _ } from "../i18n.ts";
 import type { Validator } from "../lib/validation.ts";
 import {
   array,
+  boolean,
   date,
   decimal,
+  default_value,
   object,
   optional,
   record,
@@ -23,6 +26,16 @@ export interface LineChartDatum {
   readonly name: string;
   readonly date: Date;
   readonly value: number;
+}
+
+/**
+ * A balance check marker on a line chart.
+ */
+export interface BalanceCheckMarker {
+  readonly date: Date;
+  readonly currency: string;
+  readonly number: number;
+  readonly passed: boolean;
 }
 
 /**
@@ -44,6 +57,7 @@ export class LineChart {
   readonly series_names: readonly string[];
   readonly label: string | null;
   private readonly data: readonly LineChartSeries[];
+  readonly balance_checks: readonly BalanceCheckMarker[];
   readonly tooltip_text: (
     $ctx: FormatterContext,
     d: LineChartDatum,
@@ -53,10 +67,12 @@ export class LineChart {
     label: string | null,
     data: readonly LineChartSeries[],
     tooltip_text: ($ctx: FormatterContext, d: LineChartDatum) => TooltipContent,
+    balance_checks: readonly BalanceCheckMarker[] = [],
   ) {
     this.label = label;
     this.data = sort(data, (d) => -d.values.length);
     this.tooltip_text = tooltip_text;
+    this.balance_checks = balance_checks;
     this.series_names = this.data.map((series) => series.name);
   }
 
@@ -65,15 +81,46 @@ export class LineChart {
     return this.data.filter((series) => !hidden_names.has(series.name));
   }
 
+  /**
+   * Filter the balance checks to those for currencies of shown series.
+   *
+   * Balance checks are in units of their currency, so with a conversion
+   * active, only those for currencies that are plotted are kept.
+   */
+  filter_balance_checks(
+    hidden_names: ReadonlySet<string>,
+  ): readonly BalanceCheckMarker[] {
+    const shown = new Set(this.series_names);
+    return this.balance_checks.filter(
+      (bc) => shown.has(bc.currency) && !hidden_names.has(bc.currency),
+    );
+  }
+
+  /** Text describing a balance check, e.g., for a tooltip. */
+  balance_check_text($ctx: FormatterContext, bc: BalanceCheckMarker): string {
+    const status = bc.passed
+      ? _("Balance check passed")
+      : _("Balance check failed");
+    return `${status}: ${$ctx.amount(bc.number, bc.currency)} (${day(bc.date)})`;
+  }
+
   with_context(): this {
     return this;
   }
 }
 
+const balance_check_validator = object({
+  date,
+  currency: string,
+  number: decimal,
+  passed: boolean,
+});
+
 const balances_validator = object({
   label: string,
   key: optional(string),
   data: array(object({ date, balance: record(decimal) })),
+  balance_checks: default_value(array(balance_check_validator), () => []),
 });
 
 type ParsedLineChartData = { date: Date; balance: Record<string, number> }[];
@@ -82,20 +129,24 @@ export class ParsedLineChart implements ParsedFavaChart {
   readonly label: string | null;
   readonly data: ParsedLineChartData;
   readonly key: string | null;
+  readonly balance_checks: readonly BalanceCheckMarker[];
 
   constructor(
     label: string | null,
     data: ParsedLineChartData,
     key: string | null = null,
+    balance_checks: readonly BalanceCheckMarker[] = [],
   ) {
     this.label = label;
     this.data = data;
     this.key = key;
+    this.balance_checks = balance_checks;
   }
 
   static validator: Validator<ParsedLineChart> = (json) =>
     balances_validator(json).map(
-      ({ label, data, key }) => new ParsedLineChart(label, data, key),
+      ({ label, data, key, balance_checks }) =>
+        new ParsedLineChart(label, data, key, balance_checks),
     );
 
   with_context(): LineChart {
@@ -116,9 +167,11 @@ export class ParsedLineChart implements ParsedFavaChart {
       values,
     }));
 
-    return new LineChart(this.label, data, (c, d) => [
-      c.amount(d.value, d.name),
-      domHelpers.em(day(d.date)),
-    ]);
+    return new LineChart(
+      this.label,
+      data,
+      (c, d) => [c.amount(d.value, d.name), domHelpers.em(day(d.date))],
+      this.balance_checks,
+    );
   }
 }
