@@ -23,9 +23,12 @@ differs from the current `integration` branch.
 
 - A branch whose changes are already in upstream (e.g., after its PR was merged)
   is skipped with a note; remove it from `branches.txt`.
-- On a merge conflict, the script stops and leaves the worktree for you to
-  resolve and commit. Run it again afterwards: `git rerere` remembers the
-  resolution in your clone and applies it on later rebuilds.
+- On a merge conflict, the script stops and leaves its worktree for you to
+  resolve the conflicts in, and prints the commands to record the resolution and
+  remove the worktree. Then run the script again: `git rerere` remembers the
+  resolution in your clone and applies it on this and later rebuilds.
+- If `branches.txt` cannot be read or lists a branch that does not exist, the
+  script stops without building anything.
 
 ## Changing the list
 

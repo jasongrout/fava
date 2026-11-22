@@ -32,7 +32,11 @@ git fetch --quiet --prune "$REMOTE"
 git fetch --quiet "$UPSTREAM_URL" "$UPSTREAM_BRANCH"
 upstream=$(git rev-parse FETCH_HEAD)
 
-# Branches to merge: the tools branch first, then those in the list.
+# Branches to merge: the tools branch first, then those in the list. The list
+# is read into a variable so that a failing 'git show' stops the script (set -e
+# does not see failures in a process substitution), and fed to the loop as a
+# here-string, which supplies the newline 'read' needs for the last line.
+list=$(git show "refs/remotes/$REMOTE/$TOOLS_BRANCH:$LIST_PATH")
 branches=("$TOOLS_BRANCH")
 while IFS= read -r line; do
   line="${line%%#*}"
@@ -40,7 +44,7 @@ while IFS= read -r line; do
   if [ -n "$line" ]; then
     branches+=("$line")
   fi
-done < <(git show "$REMOTE/$TOOLS_BRANCH:$LIST_PATH")
+done <<<"$list"
 
 for b in "${branches[@]}"; do
   if ! git rev-parse --verify --quiet "refs/remotes/$REMOTE/$b" >/dev/null; then
@@ -69,6 +73,10 @@ wt_git() {
   git -C "$worktree" -c rerere.enabled=true -c rerere.autoUpdate=true "$@"
 }
 
+# Commits contained in the result, for the up-to-date check below. Branches
+# skipped because their changes are already upstream are not included.
+contained=("$upstream")
+
 for b in "${branches[@]}"; do
   ref="refs/remotes/$REMOTE/$b"
   if wt_git merge-base --is-ancestor "$ref" HEAD; then
@@ -78,18 +86,24 @@ for b in "${branches[@]}"; do
   before=$(wt_git rev-parse HEAD)
   if ! wt_git merge --quiet --no-ff --no-edit \
     -m "Merge branch '$b' into $TARGET" "$ref"; then
-    if [ -z "$(wt_git diff --name-only --diff-filter=U)" ]; then
+    if ! wt_git rev-parse --quiet --verify MERGE_HEAD >/dev/null; then
+      echo "error: merging $b failed" >&2
+      exit 1
+    elif [ -z "$(wt_git diff --name-only --diff-filter=U)" ]; then
       echo "rerere resolved the conflicts merging $b"
-      wt_git commit --quiet --no-edit
+      wt_git commit --quiet --no-edit --cleanup=strip
     else
       keep_worktree=true
       cat >&2 <<EOF
 error: conflict merging $b.
-Resolve the conflicts and commit in
+Resolve the conflicts in
   $worktree
-then run this script again; git rerere remembers the resolution, so the
-next rebuild applies it automatically. Remove the worktree afterwards with
+and record the resolution with
+  git -C $worktree -c rerere.enabled=true commit --no-edit --cleanup=strip
+then remove the worktree with
   git worktree remove --force $worktree
+and run this script again. git rerere remembers the resolution in this
+clone, so this and all later rebuilds apply it automatically.
 EOF
       exit 1
     fi
@@ -100,6 +114,7 @@ EOF
     echo "skip   $b (no changes on top of upstream; remove it from the list?)"
     continue
   fi
+  contained+=("$ref")
   echo "merged $b"
 done
 
@@ -108,7 +123,7 @@ new=$(wt_git rev-parse HEAD)
 # Avoid rewriting the branch if nothing changed.
 if [ -n "$old" ] && git diff --quiet "$old" "$new"; then
   up_to_date=true
-  for ref in "$upstream" "${branches[@]/#/refs/remotes/$REMOTE/}"; do
+  for ref in "${contained[@]}"; do
     if ! git merge-base --is-ancestor "$ref" "$old"; then
       up_to_date=false
       break
