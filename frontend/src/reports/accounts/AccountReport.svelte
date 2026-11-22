@@ -24,6 +24,36 @@
   let accumulate = $derived(report_type === "balances");
   let interval_label = $derived(intervalLabel($interval).toLowerCase());
 
+  /** Attach listener for chart date clicks to scroll the journal. */
+  function chartClickListener(node: HTMLElement) {
+    function handler(event: Event) {
+      const detail = (event as CustomEvent<{ date: Date }>).detail;
+      const targetStr = detail.date.toISOString().slice(0, 10);
+      const dateCells = node.querySelectorAll<HTMLElement>(
+        ".journal > li > p > .datecell > a",
+      );
+      let closest: Element | null = null;
+      let closestDiff = Infinity;
+      for (const cell of dateCells) {
+        const dateStr = cell.textContent?.trim();
+        if (dateStr) {
+          const diff = Math.abs(
+            new Date(dateStr).getTime() - new Date(targetStr).getTime(),
+          );
+          if (diff < closestDiff) {
+            closestDiff = diff;
+            closest = cell.closest("li");
+          }
+        }
+      }
+      closest?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    node.addEventListener("chart-select-date", handler);
+    return () => {
+      node.removeEventListener("chart-select-date", handler);
+    };
+  }
+
   let all_charts = $derived(
     interval_balances && dates
       ? [
@@ -44,7 +74,10 @@
   );
 </script>
 
-<ChartSwitcher charts={all_charts} />
+<div {@attach chartClickListener}>
+<div class="sticky-chart">
+  <ChartSwitcher charts={all_charts} />
+</div>
 
 <div class="droptarget" data-account-name={account}>
   <div class="headerline">
@@ -94,3 +127,13 @@
     />
   {/if}
 </div>
+</div>
+
+<style>
+  .sticky-chart {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--background);
+  }
+</style>

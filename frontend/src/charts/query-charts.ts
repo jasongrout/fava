@@ -36,7 +36,7 @@ export function getQueryChart(
       date,
       balance: inv.value,
     }));
-    return new ParsedLineChart(null, bals).with_context();
+    return new ParsedLineChart(null, bals, []).with_context();
   }
   return null;
 }

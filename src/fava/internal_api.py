@@ -24,6 +24,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from fava.beans.abc import Meta
     from fava.beans.abc import Query
     from fava.core.accounts import AccountDict
+    from fava.core.charts import BalanceCheckPoint
     from fava.core.charts import DateAndBalance
     from fava.core.charts import DateAndBalanceWithBudget
     from fava.core.extensions import ExtensionDetails
@@ -136,6 +137,7 @@ class BalancesChart:
 
     label: str
     data: Sequence[DateAndBalance]
+    balance_checks: Sequence[BalanceCheckPoint] = ()
     type: Literal["balances"] = "balances"
 
 
@@ -173,6 +175,10 @@ class ChartApi:
                 g.filtered,
                 account_name,
                 g.conv,
+            ),
+            balance_checks=g.ledger.charts.balance_checks(
+                g.filtered,
+                account_name,
             ),
         )
 

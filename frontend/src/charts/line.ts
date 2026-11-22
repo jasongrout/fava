@@ -5,7 +5,9 @@ import { day } from "../format.ts";
 import type { Validator } from "../lib/validation.ts";
 import {
   array,
+  boolean,
   date,
+  defaultValue,
   number,
   object,
   record,
@@ -22,6 +24,16 @@ export interface LineChartDatum {
   readonly name: string;
   readonly date: Date;
   readonly value: number;
+}
+
+/**
+ * A balance check marker on a line chart.
+ */
+export interface BalanceCheckMarker {
+  readonly date: Date;
+  readonly currency: string;
+  readonly number: number;
+  readonly passed: boolean;
 }
 
 /**
@@ -43,6 +55,7 @@ export class LineChart {
   readonly series_names: readonly string[];
   readonly label: string | null;
   private readonly data: readonly LineChartSeries[];
+  readonly balance_checks: readonly BalanceCheckMarker[];
   readonly tooltipText: (
     c: FormatterContext,
     d: LineChartDatum,
@@ -52,10 +65,12 @@ export class LineChart {
     label: string | null,
     data: readonly LineChartSeries[],
     tooltipText: (c: FormatterContext, d: LineChartDatum) => TooltipContent,
+    balance_checks: readonly BalanceCheckMarker[] = [],
   ) {
     this.label = label;
     this.data = sort(data, (d) => -d.values.length);
     this.tooltipText = tooltipText;
+    this.balance_checks = balance_checks;
     this.series_names = this.data.map((series) => series.name);
   }
 
@@ -70,9 +85,17 @@ export class LineChart {
   }
 }
 
+const balance_check_validator = object({
+  date,
+  currency: string,
+  number,
+  passed: boolean,
+});
+
 const balances_validator = object({
   label: string,
   data: array(object({ date, balance: record(number) })),
+  balance_checks: defaultValue(array(balance_check_validator), () => []),
 });
 
 type ParsedLineChartData = { date: Date; balance: Record<string, number> }[];
@@ -80,15 +103,22 @@ type ParsedLineChartData = { date: Date; balance: Record<string, number> }[];
 export class ParsedLineChart implements ParsedFavaChart {
   readonly label: string | null;
   readonly data: ParsedLineChartData;
+  readonly balance_checks: readonly BalanceCheckMarker[];
 
-  constructor(label: string | null, data: ParsedLineChartData) {
+  constructor(
+    label: string | null,
+    data: ParsedLineChartData,
+    balance_checks: readonly BalanceCheckMarker[],
+  ) {
     this.label = label;
     this.data = data;
+    this.balance_checks = balance_checks;
   }
 
   static validator: Validator<ParsedLineChart> = (json) =>
     balances_validator(json).map(
-      ({ label, data }) => new ParsedLineChart(label, data),
+      ({ label, data, balance_checks }) =>
+        new ParsedLineChart(label, data, balance_checks),
     );
 
   with_context(): LineChart {
@@ -109,9 +139,14 @@ export class ParsedLineChart implements ParsedFavaChart {
       values,
     }));
 
-    return new LineChart(this.label, data, (c, d) => [
-      domHelpers.t(c.amount(d.value, d.name)),
-      domHelpers.em(day(d.date)),
-    ]);
+    return new LineChart(
+      this.label,
+      data,
+      (c, d) => [
+        domHelpers.t(c.amount(d.value, d.name)),
+        domHelpers.em(day(d.date)),
+      ],
+      this.balance_checks,
+    );
   }
 }

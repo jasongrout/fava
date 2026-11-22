@@ -19,6 +19,7 @@ from flask.json.provider import JSONProvider
 from simplejson import dumps as simplejson_dumps
 from simplejson import loads as simplejson_loads
 
+from fava.beans.abc import Balance
 from fava.beans.abc import Position
 from fava.beans.abc import Transaction
 from fava.beans.account import account_tester
@@ -88,6 +89,16 @@ class DateAndBalance:
 
     date: date
     balance: SimpleCounterInventory
+
+
+@dataclass(frozen=True)
+class BalanceCheckPoint:
+    """A balance check at a date."""
+
+    date: date
+    currency: str
+    number: Decimal
+    passed: bool
 
 
 @dataclass(frozen=True)
@@ -245,6 +256,33 @@ class ChartModule(FavaModule):
                     balance[currency] = ZERO
             last_currencies = currencies
             yield DateAndBalance(d, balance)
+
+    @listify
+    def balance_checks(
+        self,
+        filtered: FilteredLedger,
+        account_name: str,
+    ) -> Iterable[BalanceCheckPoint]:
+        """Get balance checks for an account.
+
+        Args:
+            filtered: The filtered ledger.
+            account_name: An account name.
+
+        Yields:
+            Balance check points for the account.
+        """
+        for entry in filtered.entries:
+            if (
+                isinstance(entry, Balance)
+                and entry.account.startswith(account_name)
+            ):
+                yield BalanceCheckPoint(
+                    entry.date,
+                    entry.amount.currency,
+                    entry.amount.number,
+                    passed=entry.diff_amount is None,
+                )
 
     @listify
     def net_worth(

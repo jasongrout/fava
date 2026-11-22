@@ -5,11 +5,13 @@
   import { scaleLinear, scaleUtc } from "d3-scale";
   import { area, curveStepAfter, line } from "d3-shape";
 
+  import { pointer } from "d3-selection";
+
   import { chartToggledCurrencies, lineChartMode } from "../stores/chart.ts";
   import { ctx, short } from "../stores/format.ts";
   import Axis from "./Axis.svelte";
   import { currenciesScale, includeZero, padExtent } from "./helpers.ts";
-  import type { LineChart, LineChartDatum } from "./line.ts";
+  import type { BalanceCheckMarker, LineChart, LineChartDatum } from "./line.ts";
   import type { TooltipFindNode } from "./tooltip.ts";
   import { positionedTooltip } from "./tooltip.ts";
 
@@ -82,6 +84,27 @@
   let futureFilter = $derived(
     xExtent[1] > today ? "url(#desaturateFuture)" : undefined,
   );
+
+  let hiddenSet = $derived(new Set($chartToggledCurrencies));
+  let visibleBalanceChecks = $derived(
+    chart.balance_checks.filter(
+      (bc: BalanceCheckMarker) => !hiddenSet.has(bc.currency),
+    ),
+  );
+
+  function handleClick(event: MouseEvent) {
+    const [xPos] = pointer(event);
+    const date = x.invert(xPos);
+    const target = event.currentTarget;
+    if (target instanceof Element) {
+      target.dispatchEvent(
+        new CustomEvent("chart-select-date", {
+          detail: { date },
+          bubbles: true,
+        }),
+      );
+    }
+  }
 </script>
 
 <svg viewBox={`0 0 ${width.toString()} ${height.toString()}`}>
@@ -89,8 +112,11 @@
     <feColorMatrix type="saturate" values="0.5" x={x(today)} />
     <feBlend in2="SourceGraphic" />
   </filter>
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
   <g
     {@attach positionedTooltip(tooltipFindNode)}
+    onclick={handleClick}
     transform={`translate(${margin.left.toString()},${margin.top.toString()})`}
   >
     <Axis x axis={xAxis} {innerHeight} />
@@ -123,12 +149,23 @@
         {/each}
       </g>
     {/if}
+    {#each visibleBalanceChecks as bc (bc)}
+      <circle
+        class="balance-check"
+        class:passed={bc.passed}
+        class:failed={!bc.passed}
+        r="4"
+        cx={x(bc.date)}
+        cy={y(bc.number)}
+      />
+    {/each}
   </g>
 </svg>
 
 <style>
   svg > g {
     pointer-events: all;
+    cursor: pointer;
   }
 
   .lines path {
@@ -142,5 +179,19 @@
 
   .desaturate {
     filter: saturate(50%);
+  }
+
+  .balance-check {
+    stroke-width: 2px;
+  }
+
+  .balance-check.passed {
+    fill: none;
+    stroke: var(--color-balance-passed, green);
+  }
+
+  .balance-check.failed {
+    fill: none;
+    stroke: var(--color-balance-failed, red);
   }
 </style>
