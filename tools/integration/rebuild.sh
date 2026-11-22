@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+# Rebuild the integration branch: upstream main with every branch listed in
+# branches.txt merged into it. See README.md in this directory.
+#
+# Usage: tools/integration/rebuild.sh [--push]
+#
+# Environment overrides: REMOTE (default: origin), TARGET (integration),
+# TOOLS_BRANCH (integration-tools), UPSTREAM_URL, UPSTREAM_BRANCH (main).
+set -euo pipefail
+
+REMOTE="${REMOTE:-origin}"
+TARGET="${TARGET:-integration}"
+TOOLS_BRANCH="${TOOLS_BRANCH:-integration-tools}"
+UPSTREAM_URL="${UPSTREAM_URL:-https://github.com/beancount/fava.git}"
+UPSTREAM_BRANCH="${UPSTREAM_BRANCH:-main}"
+LIST_PATH="tools/integration/branches.txt"
+
+push=false
+case "${1:-}" in
+  --push) push=true ;;
+  "") ;;
+  *)
+    echo "usage: $0 [--push]" >&2
+    exit 2
+    ;;
+esac
+
+git rev-parse --git-dir >/dev/null
+
+echo "Fetching $REMOTE and $UPSTREAM_URL $UPSTREAM_BRANCH"
+git fetch --quiet --prune "$REMOTE"
+git fetch --quiet "$UPSTREAM_URL" "$UPSTREAM_BRANCH"
+upstream=$(git rev-parse FETCH_HEAD)
+
+# Branches to merge: the tools branch first, then those in the list.
+branches=("$TOOLS_BRANCH")
+while IFS= read -r line; do
+  line="${line%%#*}"
+  line="${line//[[:space:]]/}"
+  if [ -n "$line" ]; then
+    branches+=("$line")
+  fi
+done < <(git show "$REMOTE/$TOOLS_BRANCH:$LIST_PATH")
+
+for b in "${branches[@]}"; do
+  if ! git rev-parse --verify --quiet "refs/remotes/$REMOTE/$b" >/dev/null; then
+    echo "error: branch $REMOTE/$b does not exist" >&2
+    exit 1
+  fi
+done
+
+old=$(git rev-parse --verify --quiet "refs/remotes/$REMOTE/$TARGET" || true)
+
+worktree=$(mktemp -d "${TMPDIR:-/tmp}/fava-integration.XXXXXX")
+keep_worktree=false
+cleanup() {
+  if [ "$keep_worktree" = false ]; then
+    git worktree remove --force "$worktree" 2>/dev/null || rm -rf "$worktree"
+    git worktree prune
+  fi
+}
+trap cleanup EXIT
+
+git worktree add --quiet --detach "$worktree" "$upstream"
+
+# rerere records conflict resolutions in this clone and replays them on the
+# next rebuild, so a conflict only has to be resolved once.
+wt_git() {
+  git -C "$worktree" -c rerere.enabled=true -c rerere.autoUpdate=true "$@"
+}
+
+for b in "${branches[@]}"; do
+  ref="refs/remotes/$REMOTE/$b"
+  if wt_git merge-base --is-ancestor "$ref" HEAD; then
+    echo "skip   $b (already contained in upstream)"
+    continue
+  fi
+  before=$(wt_git rev-parse HEAD)
+  if ! wt_git merge --quiet --no-ff --no-edit \
+    -m "Merge branch '$b' into $TARGET" "$ref"; then
+    if [ -z "$(wt_git diff --name-only --diff-filter=U)" ]; then
+      echo "rerere resolved the conflicts merging $b"
+      wt_git commit --quiet --no-edit
+    else
+      keep_worktree=true
+      cat >&2 <<EOF
+error: conflict merging $b.
+Resolve the conflicts and commit in
+  $worktree
+then run this script again; git rerere remembers the resolution, so the
+next rebuild applies it automatically. Remove the worktree afterwards with
+  git worktree remove --force $worktree
+EOF
+      exit 1
+    fi
+  fi
+  if wt_git diff --quiet "$before" HEAD; then
+    # Changes already in upstream, e.g., after a squash merge of the PR.
+    wt_git reset --quiet --hard "$before"
+    echo "skip   $b (no changes on top of upstream; remove it from the list?)"
+    continue
+  fi
+  echo "merged $b"
+done
+
+new=$(wt_git rev-parse HEAD)
+
+# Avoid rewriting the branch if nothing changed.
+if [ -n "$old" ] && git diff --quiet "$old" "$new"; then
+  up_to_date=true
+  for ref in "$upstream" "${branches[@]/#/refs/remotes/$REMOTE/}"; do
+    if ! git merge-base --is-ancestor "$ref" "$old"; then
+      up_to_date=false
+      break
+    fi
+  done
+  if [ "$up_to_date" = true ]; then
+    echo "$REMOTE/$TARGET is up to date ($old)"
+    exit 0
+  fi
+fi
+
+if [ "$push" = true ]; then
+  git push --force-with-lease="$TARGET:$old" "$REMOTE" "$new:refs/heads/$TARGET"
+  echo "Pushed $new to $REMOTE/$TARGET"
+else
+  echo "Rebuilt $TARGET as $new (not pushed). To publish it:"
+  echo "  $0 --push"
+fi
