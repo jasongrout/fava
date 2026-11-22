@@ -1,0 +1,4 @@
+# Branches of this fork to merge into the integration branch, one per line,
+# in merge order. Remove a branch once its PR is merged upstream.
+chart-balance-checks
+chart-click-scroll-journal
