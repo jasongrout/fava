@@ -13,6 +13,7 @@ from flask.json.provider import JSONProvider
 from markupsafe import Markup
 from msgspec import Struct
 
+from fava.beans.abc import Balance
 from fava.beans.abc import Transaction
 from fava.beans.account import account_tester
 from fava.beans.flags import FLAG_UNREALIZED
@@ -88,6 +89,17 @@ class DateAndBalance(Struct, frozen=True):
 
     date: date
     balance: SimpleCounterInventory
+
+
+class BalanceCheckPoint(Struct, frozen=True):
+    """A balance check of an account at a date."""
+
+    date: date
+    account: str
+    currency: str
+    number: Decimal
+    #: The actual minus the expected balance, if the check failed.
+    difference: Decimal | None
 
 
 class DateAndBalanceWithBudget(Struct, frozen=True):
@@ -245,6 +257,33 @@ class ChartModule(FavaModule):
                     balance[currency] = ZERO
             last_currencies = currencies
             yield DateAndBalance(d, balance)
+
+    @listify
+    def balance_checks(
+        self,
+        filtered: FilteredLedger,
+        account_name: str,
+    ) -> Iterable[BalanceCheckPoint]:
+        """Get the balance checks of an account and its subaccounts.
+
+        Args:
+            filtered: The filtered ledger.
+            account_name: An account name.
+
+        Yields:
+            Balance check points for the account and its subaccounts.
+        """
+        is_child_account = account_tester(account_name, with_children=True)
+        for entry in filtered.entries:
+            if isinstance(entry, Balance) and is_child_account(entry.account):
+                diff_amount = entry.diff_amount
+                yield BalanceCheckPoint(
+                    entry.date,
+                    entry.account,
+                    entry.amount.currency,
+                    entry.amount.number,
+                    diff_amount.number if diff_amount is not None else None,
+                )
 
     @listify
     def net_worth(
