@@ -92,12 +92,14 @@ class DateAndBalance(Struct, frozen=True):
 
 
 class BalanceCheckPoint(Struct, frozen=True):
-    """A balance check at a date."""
+    """A balance check of an account at a date."""
 
     date: date
+    account: str
     currency: str
     number: Decimal
-    passed: bool
+    #: The actual minus the expected balance, if the check failed.
+    difference: Decimal | None
 
 
 class DateAndBalanceWithBudget(Struct, frozen=True):
@@ -262,26 +264,25 @@ class ChartModule(FavaModule):
         filtered: FilteredLedger,
         account_name: str,
     ) -> Iterable[BalanceCheckPoint]:
-        """Get balance checks for an account.
-
-        Only balance checks on exactly this account are included: a balance
-        assertion on an account covers the account and its subaccounts, which
-        matches the balance shown in the line chart for the account.
+        """Get the balance checks of an account and its subaccounts.
 
         Args:
             filtered: The filtered ledger.
             account_name: An account name.
 
         Yields:
-            Balance check points for the account.
+            Balance check points for the account and its subaccounts.
         """
+        is_child_account = account_tester(account_name, with_children=True)
         for entry in filtered.entries:
-            if isinstance(entry, Balance) and entry.account == account_name:
+            if isinstance(entry, Balance) and is_child_account(entry.account):
+                diff_amount = entry.diff_amount
                 yield BalanceCheckPoint(
                     entry.date,
+                    entry.account,
                     entry.amount.currency,
                     entry.amount.number,
-                    passed=entry.diff_amount is None,
+                    diff_amount.number if diff_amount is not None else None,
                 )
 
     @listify
