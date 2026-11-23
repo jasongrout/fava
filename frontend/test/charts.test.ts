@@ -204,7 +204,9 @@ test("balance check markers for balances chart", () => {
     ]),
     [
       [new Date("1999-12-01"), "EUR", 0, false, ["Assets:A"]],
-      [new Date("2000-02-01"), "EUR", 10, true, ["Assets:A", "Assets:A:B"]],
+      // Passed and failed checks on the same date: two markers.
+      [new Date("2000-02-01"), "EUR", 10, true, ["Assets:A:B"]],
+      [new Date("2000-02-01"), "EUR", 10, false, ["Assets:A"]],
       [new Date("2000-03-01"), "USD", 5, false, ["Assets:A"]],
     ],
   );
@@ -213,15 +215,18 @@ test("balance check markers for balances chart", () => {
     ["USD"],
   );
   const ctx = formatter_context(false, null, {});
-  const marker = markers[1];
-  ok(marker);
+  const [, failed_marker, passed_marker] = markers;
+  ok(failed_marker && passed_marker);
   equal(
-    chart.balance_check_text(ctx, marker),
+    chart.balance_check_text(ctx, failed_marker),
     [
-      "Balance check passed: Assets:A 10.00 EUR",
       "Balance check failed: Assets:A:B 4.00 EUR (actual: 3.00 EUR)",
       "2000-02-01",
     ].join("\n"),
+  );
+  equal(
+    chart.balance_check_text(ctx, passed_marker),
+    ["Balance check passed: Assets:A 10.00 EUR", "2000-02-01"].join("\n"),
   );
   // Missing balance checks are fine.
   deepEqual(

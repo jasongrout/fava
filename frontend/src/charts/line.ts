@@ -41,10 +41,12 @@ export interface BalanceCheck {
 }
 
 /**
- * A marker for the balance checks at a date in a currency on a line chart.
+ * A marker for the passed or the failed balance checks at a date in a
+ * currency on a line chart.
  *
  * It is placed on the line, at the balance at the start of the day, which is
- * when a balance check applies.
+ * when a balance check applies. If there are both passed and failed checks at
+ * a date, there are two markers at the same position.
  */
 export interface BalanceCheckMarker {
   readonly date: Date;
@@ -111,7 +113,7 @@ export class LineChart {
     const series_values = new Map(
       this.filter(hidden_names).map((series) => [series.name, series.values]),
     );
-    // Group the checks by currency and date.
+    // Group the checks by currency and date, and then by result.
     const groups = new Map<string, BalanceCheck[]>();
     for (const check of this.balance_checks) {
       if (series_values.has(check.currency)) {
@@ -124,18 +126,21 @@ export class LineChart {
         }
       }
     }
-    return [...groups.values()].map((checks) => {
+    return [...groups.values()].flatMap((checks) => {
       const [{ date, currency }] = checks as [BalanceCheck];
       const values = series_values.get(currency) ?? [];
       // The balance at the start of the day is the last one before the date.
       const index = bisect_date.left(values, date);
-      return {
-        date,
-        currency,
-        value: values[index - 1]?.value ?? 0,
-        failed: checks.some((check) => check.difference != null),
-        checks,
-      };
+      const value = values[index - 1]?.value ?? 0;
+      const passed = checks.filter((check) => check.difference == null);
+      const failed = checks.filter((check) => check.difference != null);
+      // Failed first, so that they are drawn below passed ones.
+      return [
+        { failed: true, checks: failed },
+        { failed: false, checks: passed },
+      ]
+        .filter((marker) => marker.checks.length > 0)
+        .map((marker) => ({ date, currency, value, ...marker }));
     });
   }
 
