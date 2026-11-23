@@ -118,9 +118,21 @@
   let desaturate_future_filter = $derived(
     x_extent[1] > today ? `url(#${desaturate_filter_id})` : undefined,
   );
+
+  let svg: SVGSVGElement | undefined = $state();
+
+  /** Dispatch a bubbling event with the clicked date. */
+  function on_click_date(date: Date) {
+    svg?.dispatchEvent(
+      new CustomEvent("chart-select-date", {
+        detail: { date },
+        bubbles: true,
+      }),
+    );
+  }
 </script>
 
-<svg viewBox={`0 0 ${width.toString()} ${height.toString()}`}>
+<svg bind:this={svg} viewBox={`0 0 ${width.toString()} ${height.toString()}`}>
   <defs>
     <filter id={desaturate_filter_id}>
       <feColorMatrix type="saturate" values="0.5" x={x(today)} />
@@ -131,6 +143,7 @@
     invert={x.invert.bind(x)}
     height={inner_height}
     find={tooltip_find}
+    {on_click_date}
     transform={`translate(${margin.left.toString()},${margin.top.toString()})`}
   >
     <Axis x axis={x_axis} {inner_height} />
