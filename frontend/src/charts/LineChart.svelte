@@ -158,7 +158,7 @@
       {#each balance_check_markers as marker, index (index)}
         <circle
           class={{ failed: marker.failed }}
-          r={marker.failed ? 7 : 4}
+          r="4"
           cx={x(marker.date)}
           cy={y(marker.value)}
         >
@@ -187,7 +187,7 @@
     stroke-width: 2px;
   }
 
-  /* Filled and larger, so a passed check at the same date stays visible. */
+  /* Filled, so a passed check at the same date is still distinguishable. */
   .balance-checks circle.failed {
     fill: var(--error);
     stroke: var(--error);

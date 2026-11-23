@@ -46,7 +46,8 @@ export interface BalanceCheck {
  *
  * It is placed on the line, at the balance at the start of the day, which is
  * when a balance check applies. If there are both passed and failed checks at
- * a date, there are two markers at the same position.
+ * a date, there are two markers at the same position; both have all the
+ * checks at the date in `checks`, since they overlap.
  */
 export interface BalanceCheckMarker {
   readonly date: Date;
@@ -132,15 +133,13 @@ export class LineChart {
       // The balance at the start of the day is the last one before the date.
       const index = bisect_date.left(values, date);
       const value = values[index - 1]?.value ?? 0;
-      const passed = checks.filter((check) => check.difference == null);
-      const failed = checks.filter((check) => check.difference != null);
+      const has_failed = checks.some((check) => check.difference != null);
+      const has_passed = checks.some((check) => check.difference == null);
       // Failed first, so that they are drawn below passed ones.
       return [
-        { failed: true, checks: failed },
-        { failed: false, checks: passed },
-      ]
-        .filter((marker) => marker.checks.length > 0)
-        .map((marker) => ({ date, currency, value, ...marker }));
+        ...(has_failed ? [true] : []),
+        ...(has_passed ? [false] : []),
+      ].map((failed) => ({ date, currency, value, failed, checks }));
     });
   }
 
