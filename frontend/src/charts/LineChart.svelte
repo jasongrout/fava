@@ -179,8 +179,10 @@
     opacity: 0.3;
   }
 
+  /* Not filled, so a failed check at the same date shows through. */
   .balance-checks circle {
-    fill: var(--background);
+    pointer-events: visible;
+    fill: none;
     stroke: var(--green);
     stroke-width: 2px;
   }
