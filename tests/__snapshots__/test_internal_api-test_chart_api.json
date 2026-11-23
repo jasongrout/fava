@@ -161,6 +161,7 @@
     "type": "hierarchy"
   },
   {
+    "balance_checks": [],
     "data": [
       { "balance": { "USD": "1200.00" }, "date": "2014-01-02" },
       { "balance": { "USD": "1800.00" }, "date": "2014-01-03" },
@@ -285,6 +286,7 @@
     "type": "balances"
   },
   {
+    "balance_checks": [],
     "data": [
       { "balance": { "USD": "100" }, "date": "2000-01-31" },
       { "balance": { "USD": "100" }, "date": "2000-02-29" },

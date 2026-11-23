@@ -16,6 +16,7 @@ import {
 import { charts_validator } from "../src/charts/index.ts";
 import { LineChart, ParsedLineChart } from "../src/charts/line.ts";
 import { ScatterPlot } from "../src/charts/scatterplot.ts";
+import { formatter_context } from "../src/format.ts";
 import { FiscalYearEnd } from "../src/lib/interval.ts";
 import { load_json_snapshot } from "./helpers.ts";
 
@@ -138,6 +139,103 @@ test("handle data for balances chart", () => {
       values: [{ date: new Date("2000-01-01"), name: "USD", value: 10 }],
     },
   ]);
+});
+
+test("balance check markers for balances chart", () => {
+  const data: unknown = [
+    { date: "2000-01-01", balance: { EUR: "10", USD: "5" } },
+    { date: "2000-02-01", balance: { EUR: "20", USD: "5" } },
+  ];
+  const balance_checks: unknown = [
+    // Before the first data point: at a balance of zero.
+    {
+      date: "1999-12-01",
+      account: "Assets:A",
+      currency: "EUR",
+      number: "0",
+      difference: null,
+    },
+    // On the date of a data point: at the balance at the start of the day.
+    {
+      date: "2000-02-01",
+      account: "Assets:A",
+      currency: "EUR",
+      number: "10",
+      difference: null,
+    },
+    {
+      date: "2000-02-01",
+      account: "Assets:A:B",
+      currency: "EUR",
+      number: "4",
+      difference: "-1",
+    },
+    {
+      date: "2000-03-01",
+      account: "Assets:A",
+      currency: "USD",
+      number: "5",
+      difference: null,
+    },
+    // No series for this currency.
+    {
+      date: "2000-03-01",
+      account: "Assets:A",
+      currency: "CHF",
+      number: "5",
+      difference: null,
+    },
+  ];
+  const chart = ParsedLineChart.validator({
+    label: "name",
+    data,
+    balance_checks,
+  })
+    .unwrap()
+    .with_context();
+  const markers = chart.balance_check_markers(new Set());
+  deepEqual(
+    markers.map(({ date, currency, value, failed, checks }) => [
+      date,
+      currency,
+      value,
+      failed,
+      checks.map((c) => c.account),
+    ]),
+    [
+      [new Date("1999-12-01"), "EUR", 0, false, ["Assets:A"]],
+      // Passed and failed checks on the same date: two markers.
+      [new Date("2000-02-01"), "EUR", 10, true, ["Assets:A:B"]],
+      [new Date("2000-02-01"), "EUR", 10, false, ["Assets:A"]],
+      [new Date("2000-03-01"), "USD", 5, false, ["Assets:A"]],
+    ],
+  );
+  deepEqual(
+    chart.balance_check_markers(new Set(["EUR"])).map((m) => m.currency),
+    ["USD"],
+  );
+  const ctx = formatter_context(false, null, {});
+  const [, failed_marker, passed_marker] = markers;
+  ok(failed_marker && passed_marker);
+  equal(
+    chart.balance_check_text(ctx, failed_marker),
+    [
+      "Balance check failed: Assets:A:B 4.00 EUR (actual: 3.00 EUR)",
+      "2000-02-01",
+    ].join("\n"),
+  );
+  equal(
+    chart.balance_check_text(ctx, passed_marker),
+    ["Balance check passed: Assets:A 10.00 EUR", "2000-02-01"].join("\n"),
+  );
+  // Missing balance checks are fine.
+  deepEqual(
+    ParsedLineChart.validator({ label: "name", data })
+      .unwrap()
+      .with_context()
+      .balance_check_markers(new Set()),
+    [],
+  );
 });
 
 test("handle data for scatterplot chart", () => {
