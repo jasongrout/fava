@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { extent, max, min } from "d3-array";
+  import { extent } from "d3-array";
   import { axisBottom, axisLeft } from "d3-axis";
   import { pathRound } from "d3-path";
   import { quadtree } from "d3-quadtree";
@@ -37,15 +37,30 @@
 
   let data = $derived(chart.filter($chart_toggled_currencies_set));
 
+  let balance_check_markers = $derived(
+    chart.balance_check_markers($chart_toggled_currencies_set),
+  );
+
   // Scales and quadtree
   let all_values = $derived(data.flatMap((d) => d.values));
 
+  let date_extent = $derived(
+    extent([
+      ...all_values.map((v) => v.date),
+      ...balance_check_markers.map((m) => m.date),
+    ]),
+  );
   let x_extent = $derived([
-    min(data, (s) => s.values[0]?.date) ?? today,
-    max(data, (s) => s.values[s.values.length - 1]?.date) ?? today,
+    date_extent[0] ?? today,
+    date_extent[1] ?? today,
   ] as const);
   let x = $derived(scaleUtc([0, inner_width]).domain(x_extent));
-  let value_extent = $derived(extent(all_values, (v) => v.value));
+  let value_extent = $derived(
+    extent([
+      ...all_values.map((v) => v.value),
+      ...balance_check_markers.map((m) => m.value),
+    ]),
+  );
   // Include zero in area charts so the entire area is shown, not a cropped part of it
   let y_extent = $derived(
     $line_chart_mode === "area" ? include_zero(value_extent) : value_extent,
@@ -139,6 +154,18 @@
         {/each}
       </g>
     {/if}
+    <g class="balance-checks">
+      {#each balance_check_markers as marker, index (index)}
+        <circle
+          class={{ failed: marker.failed }}
+          r="4"
+          cx={x(marker.date)}
+          cy={y(marker.value)}
+        >
+          <title>{chart.balance_check_text($ctx, marker)}</title>
+        </circle>
+      {/each}
+    </g>
   </Brush>
 </svg>
 
@@ -150,5 +177,15 @@
 
   .area path {
     opacity: 0.3;
+  }
+
+  .balance-checks circle {
+    fill: var(--background);
+    stroke: var(--green);
+    stroke-width: 2px;
+  }
+
+  .balance-checks circle.failed {
+    stroke: var(--error);
   }
 </style>
