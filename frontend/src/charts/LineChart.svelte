@@ -37,8 +37,8 @@
 
   let data = $derived(chart.filter($chart_toggled_currencies_set));
 
-  let balance_checks = $derived(
-    chart.filter_balance_checks($chart_toggled_currencies_set),
+  let balance_check_markers = $derived(
+    chart.balance_check_markers($chart_toggled_currencies_set),
   );
 
   // Scales and quadtree
@@ -47,7 +47,7 @@
   let date_extent = $derived(
     extent([
       ...all_values.map((v) => v.date),
-      ...balance_checks.map((bc) => bc.date),
+      ...balance_check_markers.map((m) => m.date),
     ]),
   );
   let x_extent = $derived([
@@ -58,7 +58,7 @@
   let value_extent = $derived(
     extent([
       ...all_values.map((v) => v.value),
-      ...balance_checks.map((bc) => bc.number),
+      ...balance_check_markers.map((m) => m.value),
     ]),
   );
   // Include zero in area charts so the entire area is shown, not a cropped part of it
@@ -168,14 +168,14 @@
       </g>
     {/if}
     <g class="balance-checks">
-      {#each balance_checks as bc, index (index)}
+      {#each balance_check_markers as marker, index (index)}
         <circle
-          class={{ failed: !bc.passed }}
+          class={{ failed: marker.failed }}
           r="4"
-          cx={x(bc.date)}
-          cy={y(bc.number)}
+          cx={x(marker.date)}
+          cy={y(marker.value)}
         >
-          <title>{chart.balance_check_text($ctx, bc)}</title>
+          <title>{chart.balance_check_text($ctx, marker)}</title>
         </circle>
       {/each}
     </g>

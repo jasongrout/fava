@@ -152,11 +152,32 @@ def test_balance_checks(tmp_path: Path) -> None:
     ledger = FavaLedger(str(path))
     filtered = ledger.get_filtered()
 
-    assert ledger.charts.balance_checks(filtered, "Assets:Cash") == [
-        BalanceCheckPoint(date(2020, 1, 3), "USD", Decimal(15), passed=True),
-        BalanceCheckPoint(date(2020, 1, 4), "USD", Decimal(20), passed=False),
+    checks = ledger.charts.balance_checks
+
+    passed_cash = BalanceCheckPoint(
+        date(2020, 1, 3), "Assets:Cash", "USD", Decimal(15), None
+    )
+    passed_wallet = BalanceCheckPoint(
+        date(2020, 1, 3), "Assets:Cash:Wallet", "USD", Decimal(5), None
+    )
+    passed_other = BalanceCheckPoint(
+        date(2020, 1, 3), "Assets:CashOther", "USD", Decimal(1), None
+    )
+    failed_cash = BalanceCheckPoint(
+        date(2020, 1, 4), "Assets:Cash", "USD", Decimal(20), Decimal(-5)
+    )
+    # Checks of subaccounts are included, but not of other accounts that
+    # just share the prefix.
+    assert checks(filtered, "Assets:Cash") == [
+        passed_cash,
+        passed_wallet,
+        failed_cash,
     ]
-    assert ledger.charts.balance_checks(filtered, "Assets:Cash:Wallet") == [
-        BalanceCheckPoint(date(2020, 1, 3), "USD", Decimal(5), passed=True),
+    assert checks(filtered, "Assets:Cash:Wallet") == [passed_wallet]
+    assert checks(filtered, "Assets") == [
+        passed_cash,
+        passed_wallet,
+        passed_other,
+        failed_cash,
     ]
-    assert ledger.charts.balance_checks(filtered, "Assets") == []
+    assert checks(filtered, "Expenses") == []
